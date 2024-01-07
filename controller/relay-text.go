@@ -27,6 +27,7 @@ const (
 	APITypeXunfei
 	APITypeAIProxyLibrary
 	APITypeTencent
+	APITypeGemini
 )
 
 var httpClient *http.Client
@@ -56,6 +57,9 @@ func relayTextHelper(c *gin.Context, relayMode int) *OpenAIErrorWithStatusCode {
 	err := common.UnmarshalBodyReusable(c, &textRequest)
 	if err != nil {
 		return errorWrapper(err, "bind_request_body_failed", http.StatusBadRequest)
+	}
+	if textRequest.MaxTokens < 0 || textRequest.MaxTokens > math.MaxInt32/2 {
+		return errorWrapper(errors.New("max_tokens is invalid"), "invalid_max_tokens", http.StatusBadRequest)
 	}
 	if relayMode == RelayModeModerations && textRequest.Model == "" {
 		textRequest.Model = "text-moderation-latest"
@@ -118,6 +122,8 @@ func relayTextHelper(c *gin.Context, relayMode int) *OpenAIErrorWithStatusCode {
 		apiType = APITypeAIProxyLibrary
 	case common.ChannelTypeTencent:
 		apiType = APITypeTencent
+	case common.ChannelTypeGemini:
+		apiType = APITypeGemini
 	}
 	baseURL := common.ChannelBaseURLs[channelType]
 	requestURL := c.Request.URL.String()
@@ -129,11 +135,7 @@ func relayTextHelper(c *gin.Context, relayMode int) *OpenAIErrorWithStatusCode {
 	case APITypeOpenAI:
 		if channelType == common.ChannelTypeAzure {
 			// https://learn.microsoft.com/en-us/azure/cognitive-services/openai/chatgpt-quickstart?pivots=rest-api&tabs=command-line#rest-api
-			query := c.Request.URL.Query()
-			apiVersion := query.Get("api-version")
-			if apiVersion == "" {
-				apiVersion = c.GetString("api_version")
-			}
+			apiVersion := GetAPIVersion(c)
 			requestURL := strings.Split(requestURL, "?")[0]
 			requestURL = fmt.Sprintf("%s?api-version=%s", requestURL, apiVersion)
 			baseURL = c.GetString("base_url")
@@ -178,9 +180,20 @@ func relayTextHelper(c *gin.Context, relayMode int) *OpenAIErrorWithStatusCode {
 		if baseURL != "" {
 			fullRequestURL = fmt.Sprintf("%s/v1beta2/models/chat-bison-001:generateMessage", baseURL)
 		}
-		apiKey := c.Request.Header.Get("Authorization")
-		apiKey = strings.TrimPrefix(apiKey, "Bearer ")
-		fullRequestURL += "?key=" + apiKey
+	case APITypeGemini:
+		requestBaseURL := "https://generativelanguage.googleapis.com"
+		if baseURL != "" {
+			requestBaseURL = baseURL
+		}
+		version := "v1"
+		if c.GetString("api_version") != "" {
+			version = c.GetString("api_version")
+		}
+		action := "generateContent"
+		if textRequest.Stream {
+			action = "streamGenerateContent"
+		}
+		fullRequestURL = fmt.Sprintf("%s/%s/models/%s:%s", requestBaseURL, version, textRequest.Model, action)
 	case APITypeZhipu:
 		method := "invoke"
 		if textRequest.Stream {
@@ -278,6 +291,13 @@ func relayTextHelper(c *gin.Context, relayMode int) *OpenAIErrorWithStatusCode {
 			return errorWrapper(err, "marshal_text_request_failed", http.StatusInternalServerError)
 		}
 		requestBody = bytes.NewBuffer(jsonStr)
+	case APITypeGemini:
+		geminiChatRequest := requestOpenAI2Gemini(textRequest)
+		jsonStr, err := json.Marshal(geminiChatRequest)
+		if err != nil {
+			return errorWrapper(err, "marshal_text_request_failed", http.StatusInternalServerError)
+		}
+		requestBody = bytes.NewBuffer(jsonStr)
 	case APITypeZhipu:
 		zhipuRequest := requestOpenAI2Zhipu(textRequest)
 		jsonStr, err := json.Marshal(zhipuRequest)
@@ -364,10 +384,15 @@ func relayTextHelper(c *gin.Context, relayMode int) *OpenAIErrorWithStatusCode {
 			if textRequest.Stream {
 				req.Header.Set("X-DashScope-SSE", "enable")
 			}
+			if c.GetString("plugin") != "" {
+				req.Header.Set("X-DashScope-Plugin", c.GetString("plugin"))
+			}
 		case APITypeTencent:
 			req.Header.Set("Authorization", apiKey)
 		case APITypePaLM:
-			// do not set Authorization header
+			req.Header.Set("x-goog-api-key", apiKey)
+		case APITypeGemini:
+			req.Header.Set("x-goog-api-key", apiKey)
 		default:
 			req.Header.Set("Authorization", "Bearer "+apiKey)
 		}
@@ -520,6 +545,25 @@ func relayTextHelper(c *gin.Context, relayMode int) *OpenAIErrorWithStatusCode {
 			return nil
 		} else {
 			err, usage := palmHandler(c, resp, promptTokens, textRequest.Model)
+			if err != nil {
+				return err
+			}
+			if usage != nil {
+				textResponse.Usage = *usage
+			}
+			return nil
+		}
+	case APITypeGemini:
+		if textRequest.Stream {
+			err, responseText := geminiChatStreamHandler(c, resp)
+			if err != nil {
+				return err
+			}
+			textResponse.Usage.PromptTokens = promptTokens
+			textResponse.Usage.CompletionTokens = countTokenText(responseText, textRequest.Model)
+			return nil
+		} else {
+			err, usage := geminiChatHandler(c, resp, promptTokens, textRequest.Model)
 			if err != nil {
 				return err
 			}

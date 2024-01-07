@@ -52,6 +52,8 @@ var ModelRatio = map[string]float64{
 	"gpt-3.5-turbo-16k-0613":    1.5,
 	"gpt-3.5-turbo-instruct":    0.75, // $0.0015 / 1K tokens
 	"gpt-3.5-turbo-1106":        0.5,  // $0.001 / 1K tokens
+	"davinci-002":               1,    // $0.002 / 1K tokens
+	"babbage-002":               0.2,  // $0.0004 / 1K tokens
 	"text-ada-001":              0.2,
 	"text-babbage-001":          0.25,
 	"text-curie-001":            1,
@@ -83,12 +85,16 @@ var ModelRatio = map[string]float64{
 	"ERNIE-Bot-4":               8.572,  // ￥0.12 / 1k tokens
 	"Embedding-V1":              0.1429, // ￥0.002 / 1k tokens
 	"PaLM-2":                    1,
+	"gemini-pro":                1,      // $0.00025 / 1k characters -> $0.001 / 1k tokens
+	"gemini-pro-vision":         1,      // $0.00025 / 1k characters -> $0.001 / 1k tokens
 	"chatglm_turbo":             0.3572, // ￥0.005 / 1k tokens
 	"chatglm_pro":               0.7143, // ￥0.01 / 1k tokens
 	"chatglm_std":               0.3572, // ￥0.005 / 1k tokens
 	"chatglm_lite":              0.1429, // ￥0.002 / 1k tokens
-	"qwen-turbo":                0.8572, // ￥0.012 / 1k tokens
-	"qwen-plus":                 10,     // ￥0.14 / 1k tokens
+	"qwen-turbo":                0.5715, // ￥0.008 / 1k tokens  // https://help.aliyun.com/zh/dashscope/developer-reference/tongyi-thousand-questions-metering-and-billing
+	"qwen-plus":                 1.4286, // ￥0.02 / 1k tokens
+	"qwen-max":                  1.4286, // ￥0.02 / 1k tokens
+	"qwen-max-longcontext":      1.4286, // ￥0.02 / 1k tokens
 	"text-embedding-v1":         0.05,   // ￥0.0007 / 1k tokens
 	"SparkDesk":                 1.2858, // ￥0.018 / 1k tokens
 	"360GPT_S2_V9":              0.8572, // ¥0.012 / 1k tokens
@@ -112,6 +118,9 @@ func UpdateModelRatioByJSONString(jsonStr string) error {
 }
 
 func GetModelRatio(name string) float64 {
+	if strings.HasPrefix(name, "qwen-") && strings.HasSuffix(name, "-internet") {
+		name = strings.TrimSuffix(name, "-internet")
+	}
 	ratio, ok := ModelRatio[name]
 	if !ok {
 		SysError("model ratio not found: " + name)
