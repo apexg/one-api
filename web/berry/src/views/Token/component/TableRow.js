@@ -31,7 +31,7 @@ const COPY_OPTIONS = [
     url: 'https://chat.oneapi.pro/#/?settings={"key":"sk-{key}","url":"{serverAddress}"}',
     encode: false
   },
-  { key: 'ama', text: 'AMA 问天', url: 'ama://set-api-key?server={serverAddress}&key=sk-{key}', encode: true },
+  { key: 'ama', text: 'BotGem', url: 'ama://set-api-key?server={serverAddress}&key=sk-{key}', encode: true },
   { key: 'opencat', text: 'OpenCat', url: 'opencat://team/join?domain={serverAddress}&token=sk-{key}', encode: true }
 ];
 
@@ -192,7 +192,7 @@ export default function TokensTableRow({ item, manageToken, handleOpenModal, set
               id={`switch-${item.id}`}
               checked={statusSwitch === 1}
               onChange={handleStatus}
-              disabled={statusSwitch !== 1 && statusSwitch !== 2}
+            // disabled={statusSwitch !== 1 && statusSwitch !== 2}
             />
           </Tooltip>
         </TableCell>
@@ -222,7 +222,7 @@ export default function TokensTableRow({ item, manageToken, handleOpenModal, set
               </Button>
             </ButtonGroup>
             <ButtonGroup size="small" aria-label="split button">
-              <Button color="primary">聊天</Button>
+              <Button color="primary" onClick={(e) => handleCopy(COPY_OPTIONS[0], 'link')}>聊天</Button>
               <Button size="small" onClick={(e) => handleOpenMenu(e, 'link')}>
                 <IconCaretDownFilled size={'16px'} />
               </Button>
